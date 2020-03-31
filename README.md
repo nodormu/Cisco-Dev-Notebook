@@ -1,2 +1,1 @@
-# Cisco-Dev-Notebook
-Dev notes for various types of Cisco device management
+This notebook serves the purpose of providing pseudo notes for setting up options on Cisco devices.

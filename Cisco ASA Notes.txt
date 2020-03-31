@@ -1,0 +1,292 @@
+Cisco ASA Notes.
+All of these settings require configuration mode.
+Don't forget to run this command after you finish your settings:  copy run start
+
+1) standard interface settings for outside interfaces, typically the security level 0 for general purpose without DMZ based types of restrictions. Referencing DMZ is a bit of an outdated concept anyway.
+interface GigabitEthernet#/#
+	nameif outside
+	security-level #
+	ip address <publicIPaddress> <subnetmask> 
+
+option:  if there is a standby firewall, the ipaddress assignment needs to be ammended with the IP of the standby device, 
+likely a public IP, as the outside interface, unless it's strictly an internal IP for LAN traffic management only.
+Subnet does not have to be assigned as of code versions up to date with the publish date of this notebook.
+
+ip address <ipaddress> <subnetmask> standby <ipaddress>
+
+option:  You may also want to set a VLAN in some instances, while inside the interface options, you can add the below line.
+
+vlan <vlan#>
+
+option:  subinterfaces. If you have a limited number of interfaces, having subinterfaces can help you reduce the number of outages for major changes to firewall interfaces
+note: Using the VLANID as the subinterface reference number is good organizational qualities, but could pose a security issue if this was known throughout the company staff
+
+interface GigabitEthernet#/#.###
+
+2) standard interface settings for inside LAN interfaces
+
+Note:  The older ASA 5505s will do switching on their LAN ports, where as the 5506 and newer models associated with this line up release are Layer 3 ONLY.
+Note2:  The OLDER Larger ASA models are typically only used for Layer 3 due to the limited number of ports with base purchase, but the NG larger ASAs are also Layer 3 ONLY.
+
+interface GigabitEthernet#/#
+	vlan <vlan#>
+	nameif inside
+	security-level 100
+	ip address <LAN IPaddress> <subnet>
+
+option: as with outside interface, security level needs to be set based on LAN requirements, and if a standby is in place, it's inside LAN ip needs to append as below.
+
+	ip address <LAN IPaddress> <subnet> standby <LAN IPaddress>
+
+option:  subinterfaces. If you have a limited number of interfaces, having subinterfaces can help you reduce the number of outages for major changes to firewall interfaces
+note: Using the VLANID as the subinterface reference number is good organizational qualities, but could pose a security issue if this was known throughout the company staff
+
+interface GigabitEthernet#/#.###
+
+3) Circuit Interface example, which could be used for various other types of incoming circuits, not a complete set of guidelines, just an example.
+
+interface GigabitEthernet#/#
+	nameif <circuitID>
+	security-level 50
+	ip address <IPaddress> <subnet>
+
+option: same standby options as above outside and inside interfaces.
+
+non-optional for failovers. failover example below. If you are using a subinterface, don't forget to add that (i.e. GigabitEthernet#/#.###)
+
+failover
+failover lan interface fail GigabitEthernet#/#
+failover link fail GigabitEthernet#/#
+failover interface ip failover <ip address of active node> <subnet> standby <ipaddress of failover node>
+
+4) Setting timezone (2 examples, subtract the number of hours from UTC)
+
+clock timezone EST -5
+clock timezone CST -6
+
+options:  Daylight savings time (due to how it's inconsistent, you might be better off changing it yourself, but it depends on the situation and access the ASA is allowed)
+Note:  This example if for CST which turns the -6 to a -5, but it depends on if your state/nation/country/etc even recognizes daylight savings time. It appears to be losing relevance.
+
+clock summer-time CDT recurring
+
+5) setting boot image and asdm image. You will have to run a show flash or dir to see what files you have listed, below is just and example. 5506 and other NG models support a USB thumb drive if you are low on space.
+
+boot system disk0:/asa924-k8.bin
+asdm image disk0:/asdm-
+
+6) setting enable password.
+
+enable password <type it in clear text> encrypted
+
+7) setting hostname
+
+hostname <type hostname, which will be seen when polling via SNMP>
+
+8) common DNS settings with domain-name setting, typical, not necessarily always required, depends on your situation
+
+dns domain-lookup outside
+dns domain-lookup management
+dns server-group DefaultDNS
+	name-server <type IP of DNS server>
+	name-server <type IP of DNS server>
+	domain-name <type your domain.com here>
+
+9) examples of setting up object groups (for VPNs, LAN firewall rule management, port access, etc etc etc)
+
+object-group network <type an object name, if you set these a different way, then the ASA will assign a random DM_INLINE_NETWORK_## here in place of a name. Create objects first. Use a name. Be organized>
+	description <type something more detailed than the object name, or just don't use this>
+	network-object host <single IP address>
+	network-object <Network IP> <subnet mask>
+
+object-group service <object name> tcp
+	description <type something more detailed than the object name, or just don't use this>
+	port-object eq www
+	port-object eq https
+	port-object eq dns
+	port-object eq ssh
+	port-object eq ftp
+	port-object range 18000 18200
+
+object-group service <object name> udp
+	port-object eq snmp
+	port-object eq 9100
+
+10) access list examples: standard and extended, along with remark example
+
+access-list <object name or number> standard permit <ip address> <subnet mask>
+access-list <object name or number> standard host <ip address>
+
+access-list <object name or number> extended permit ip object-group <object name>
+
+access-list <object name or number> extended deny tcp host <IP address> any eq <tcp port name/number>
+
+access-list 100 standard permit 10.0.4.0 255.0.0.0 
+
+access-list 1000 extended permit ip object-group DMZgroup
+
+access-list VPNsplittunnel standard permit host 192.168.25.25
+access-list VPNsplittunnel standard permit 192.168.27.0 255.255.255.0
+
+access-list VPNsplittunnel remark suspect
+
+access-list ssl_clientvpnuser standard permit host 192.168.30.37
+access-list ssl_clientvpnuser standard permit 192.168.32.0 255.255.255.0
+
+11) 2 way packet capture access list example for a specific host on any port. You need both rules so you can see all the traffic both ways while analyzing in wireshark.
+
+access-list capture extended allow ip <host IP> any <destination IP, firewall gateway as a suggestion>
+access-list capture extended allow ip <destination IP, firewall gateway as a suggestion> any <host IP>
+
+access-list capture2 extended permit ip host <source host IP> host <destination host IP> 
+access-list capture2 extended permit ip host <destination host IP> host <source host IP>
+
+example with some IPs getting ANY traffic traveling to/from host IP 192.168.25.25 to/from the firewall gateway of 192.168.25.1:
+
+access-list capture2 extended permit ip host 192.168.25.25 host 192.168.25.1 
+access-list capture2 extended permit ip host 192.168.25.1 host 192.168.25.25
+
+12) Misc security setting examples. I don't recommend EVER having no monitor-interface management if you have a LARGE Enterprise and lots of turnover in the network department due to cheap horrible company administrators.
+
+monitor-interface inside
+no monitor-interface management
+asdm history enable
+
+13) Global, inside interface and static NAT examples and default gateway (route) setting examples. if the nameif of your inside interface is not inside, then type what you called it instead of inside.
+
+route outside <LAN Network IP> <subnet mask> <next Hop public IP, contact ISP for this if you don't have a next hop public IP static block you control>
+
+global (outside) 1 <public IP address> netmask <subnet mask>
+global (<object, circuitname>) 1 <public IP address> netmask <subnet mask>
+
+route <object, circuitname> <network IP> <subnet mask> <next hop IP address> <priority number usually 1, unless you need it to be a higher metric to favor of another route>
+route IPVPN 172.16.25.1 255.255.255.0 45.56.157.38 1
+
+nat (inside) 0 access-list <access list number or object name>
+
+static (inside,outside) <host IP> access-list <object name, or it's auto created when you used the VPN wizard in the ASDM, i.e. inside_nat_static_##>
+
+14) You need transform sets for your VPNs. Stay away from des and md5 if you can help it as they are outdated and VERY unsecure.
+
+crypto ipsec transform-set ESP-AES-128-SHA esp-aes esp-sha-hmac
+crypto ipsec transform-set ESP-AES-128-MD5 esp-aes esp-md5-hmac 
+crypto ipsec transform-set ESP-DES-SHA esp-des esp-sha-hmac 
+crypto ipsec transform-set ESP-AES-192-MD5 esp-aes-192 esp-md5-hmac 
+crypto ipsec transform-set ESP-AES-192-SHA esp-aes-192 esp-sha-hmac 
+crypto ipsec transform-set ESP-AES-256-SHA esp-aes-256 esp-sha-hmac
+
+example of isakmp policy defintion. lower the number, higher the priority. IKEv1 requires a PSK. IKEv2 requires a PSK AND a second password/key.
+crypto isakmp identity
+crypto isakmp enable outside (or whatever your nameif is on the VPNs corresponding interface where encrypted traffic is required)
+crypto isakmp policy 10
+	authentication pre-share
+	encryption aes-256
+	hash sha
+	group 5 (or whatever group number you and the admin of the remote firewall VPN endpoint decide upon)
+	lifetime 86400  (this is default, again, it's whatever you and the remote firewall VPN endpoint admin decide)
+
+
+15) Crypto map examples for site to site VPNs peer data set. If you don't nameif your outside interface, 
+use whatever you called it instead of outside as shown below. This is just an example. Set an object with a host IP before doing this.
+Default lifetimes are in example. You may have to change these depending on the agreement between you and the remote end firewall admin.
+
+	crypto map outside_map 100 match address <object group name>
+	crypto map set peer <public IP address of remote peer endpoint>
+	crypto map outside_map 100 set transform-set ESP-AES-256-SHA
+	crypto map outsdie_map 100 set security-association lifetime seconds 28800
+	crypto map outside_map 100 set security-association lifetime kilobytes 4608000
+
+option: reverse route-injection, sets up return traffic to pass back through VPN. not always necessary, you would just add the following line in the sam crypto map peer setting
+	
+	crypto map outside_map 100 set reverse-route
+
+16) cryptomaps for to support above examples, with specified encryption domains so as to limit traffic allowance.
+As always. Be organized. Create objects.
+	
+	access-list outside_100_cryptomap extended permit ip object-group <object name or auto gen ie. DM_INLINE_NETWORK_10> host <host IP for the single IP behind the peers public IP>
+	access-list outside_100_cryptomap extended permit ip host <internal host IP address> <network IP address> <subnet mask>
+	access-list outside_100_cryptomap extended permit ip object-group <object name or auto gen ie. DM_INLINE_NETWORK_10> <here you could specify the host IP, or the network with subnet mask>
+
+17) Occassionally you will run into problems where you will have to NAT your inside traffic behind a different IP address if it conflicts with their existin LAN IP structure.
+Specify a network you can use JUST for NATs in case this problem arises, and to make life easy, don't use this network for any other purpose.
+
+	static (inside,outside) <NAT address IP>  access-list inside_nat_static_10
+
+18) For site to site VPNs, here is the tunnel-group settings for the PSK of an IKEv1 tunnel as an example.
+
+	tunnel-group <public IP address of remote peer> type ipsec-l2l
+	tunnel-group <public IP address of remote peer> ipsec-attributes
+ 		pre-shared-key <preshared key, enter it in clear text, it will encrypt for show runs>
+
+19) You will also need a tunnel group for the Anyconnect VPNs/General access. 
+
+	tunnel-group <object name, i.e. DefaultVPNGroup> general-attributes
+		address-pool <dhcpd pool object name for vpn tunnel group>
+		authentication-server-group <object name for server group, good idea to make this the same as dhcpd pool group object name>
+	 
+20) Specifying SSH access to ASA from specific IPs/Subnets. Again, if outside or inside is not your nameif on the interface, then use whatever you specified for the interface.
+
+	ssh 45.86.48.125 outside
+	ssh 172.16.41.0 255.255.255.0 inside
+	ssh 93.16.78.125 <object name circuit ID as example>
+	ssh 93.16.78.125 SD-WAN
+
+21) Setting NTP server. Again if your outside or inside interface is not the nameif, specify whatever you called it.
+
+	ntp server <ip address> source outside
+	ntp server <ip address> source inside
+
+22) set dhcp for inside LAN
+
+	dhcpd address 172.16.40.3-172.16.40.250 <interface name, not nameif>
+	dhcpd enable <interface name, not nameif>
+
+23) Setting local ADMIN accounts is a good idea in case LDAP or RADIUS authentication/communication becomes inaccessible by the ASA. Level 15 is God mode ADMIN.
+
+	username <username> password <clear text pw> encrypted priviledge 15
+
+Let's say you go an auditor that needs read only access, and you don't want to create a temporary RADIUS or AD account in your domain, such as for a SOC audit.
+
+	username <username> password <clear text pw> encrypted priviledge 0
+
+24) You'll need to set trustpoints on the ASA for Thawte certificates or whatever type of certificate you decide to use. Google this.
+Example only. Please google this if you are not the owner of this github so you don't screw this up.
+
+crypto cat trustpoint asdm_based_trustpoint1
+	enrollment terminal
+	fqdn <type fully qualified domain name here>
+	subject-name CN=<type fqdn again>, 0=<type primary company on cert here>, C=<type Country Code here>, St=<type state here>, L=<type what type it is here, is it web, mobile, or what?>
+	keypair cert<type what is typically 2048, 4096 or whatever the keypair setting is for your certificate, no space after cert, i.e. cert4096>
+	crl configure
+
+25) Forgot about group-policies, should have been closer to VPN based section for ssl based client VPNs (Anyconnect) notes
+Just an example.
+
+	group-policy ssl_athome_user internal
+	group-policy ssl_athome_user attributes
+		wins-server values <ip address> <ip address>
+		dns-sever value <ip address> <ip address>
+		vpn-idle-timeout 60
+		vpn-tunnel-protocol IPSec svc
+		split-tunnel-policy tunnelspecified (for limiting what access the Anyconnect user has)
+		split-tunnel-network-list value ssl_athome_user  (you could make it a different name than the group policy setting if you wanted)
+		default-domain <type domain name here>  (this is not required if not using AD for Anyconnect user verification)
+		address-pools value <enter dhcpd pool specified>
+
+option, and very likely will be put in use under the attributes. This is for limiting exactly what hosts/networks an SSL VPN user is allowed to access.
+
+		split-tunnel-network-list value ssl_<type whatever you want to call it splittunnel object name>
+	
+
+
+
+
+
+
+
+
+ 
+
+
+
+
+
