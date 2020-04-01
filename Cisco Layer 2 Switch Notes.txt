@@ -1,0 +1,135 @@
+Cisco iOS Layer 2 Switch Notes
+Don't forget to type:  copy run start    when you complete your changes.
+
+
+1) some basic global settings (some <pseudocode> and/or <pseudocode + notes>
+Google these to see which apply to your environment if they are obvious to you.
+
+no service pad
+service timestamps debug datetime localtime
+service timestatmp log datetime localtime
+ip dhcp snooping vlan # (whatever vlan(s) you need this on)
+no ip domain-lookup (if you are not using local DNS, and don't want to wait for ever for some URL to time out)
+vtp domain <type domain>
+vtp mode <default is server, BE SURE YOU CHANGE YOUR vtp MODE for a new switch BEFORE connecting to your existing network otherwise, you may wipe out your entire existing VTP database on your network>
+vlan internal allocation policy ascending
+clock timezone UTC -5
+clock summer-time UTC recurring
+authentication mac-move permit
+ip subnet-zero
+ip domain-name <domain name.com>
+switch # provision <hostname>
+system mtu routing 1500 (this is default)
+
+
+2) login setup
+
+aaa new model or not, depending on your requirements. Check online based on your code version
+
+--Other triple aaa options/commands
+aaa session-id common
+
+
+3) Users/admins. You want to setup local access for full priv 15 admin users in case RADIUS or AD server is unavailable
+
+username <username> priv 15 secret 5 <type in clear text>
+
+--Don't forget to set the enable secret, but you typically want to use RADIUS or AD for logins, rather than secret to get to enable prompt
+enable secret 5 <enter in plaintext>
+
+--Now encrypt everything
+service password-encryption (run this after you setup all your local logins)
+
+4) trustpoints, this is an example with little pseudo code
+
+crypto pki trustpoint <certificate, self signed, domain, etc>
+	enrollment <type> (could be selfsigned if you don't have a CRM)
+	subject-name cn=IOS-Self-Signed-Certificate-############
+	revocation-check none
+	rsakeypair <certificatename> 
+
+5) setup up logging as much or as little as you want/need/require
+
+archive
+	log config
+	logging enable
+	logging size ### (whatever buffer you want)
+	notify syslog contenttype plaintext
+
+--Log buffering options
+logging buffered ########### (choose buffer or use default)
+
+--Other common global logging settings to consider
+service timestamps debug datetime localtime
+service timestamps log datetime localtime
+
+login on-failure log
+login on-success log
+
+6) setup spanning tree. Some older switches have limitations on the number VLANs due to lack of RAM, or lack of support to upgrade existing RAM.
+rapid PVST2 is a better option if you must using spanning tree for loop avoidance on Layer 2.
+Of course google your version of code for any further options/limitations
+
+spanning-tree mode rapid-pvst
+spanning-tree etherchannel guard misconfig
+spanning-tree extend system-id
+
+7) Some basic Interface configuration options for non-trunking interfaces
+
+interface GigabitEthernet#/#/#
+	description <type something useful, like Joes phone and workstation, or Room27,jack4>
+	switchport access vlan #
+	switchport mode access
+	switchport voice vlan # (if you have a VoIP phone on this port and are using the switch on the phone to route your data traffic to the PC connected to it.)
+	spanning-tree portfast (check your version of code to see if this command is even needed. May be deprecated on newer and large chassis module based switches.)
+	spanning-tree bpduguard enable (check your version of code and your environment to see if this type of protection is needed)
+
+8) Some basic Interface options for trunking interfaces
+
+interface GigabitEthernet1/0/46
+	description <type something useful like Hostname Switch, port 27>
+	switchport trunk encapsulation dot1q (this may not be needed, check relative to your code version options)
+	switchport mode trunk
+	switchport trunk allowed vlan #, #, #  (etc, this allows you to specify what vlans are allowed across the trunk, all = default)
+
+9) Set default gateway, along with other common global ip settings
+
+ip default-gateway <type IP address of your default gateway>
+ip classless
+ip http server
+ip htp secure-server
+
+10) Set ntp server
+
+ntp clock-period ######### (Google what is for this ##########)
+ntp source <specify source interface of NTP traffic inbound to switch>
+ntp server <type IP address of NTP server in your environment>
+
+10) setup VTY inputs, example for SSH only, stay away from telnet if you can help it.
+
+line con 0
+ logging synchronous
+line vty 0 4
+ exec-timeout 30 0
+ transport input ssh
+line vty 5 15
+ exec-timeout 0 0
+ no exec
+ transport input ssh
+
+11) assign SSH IP access of switch to a management VLAN
+
+interface Vlan#
+	ip address <IP address> <subnet mask, not wild card>
+
+12) Set hostname of device
+
+hostname <type hostname of device>
+
+
+	
+
+
+
+
+

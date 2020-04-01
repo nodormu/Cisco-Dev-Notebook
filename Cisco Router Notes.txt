@@ -1,0 +1,195 @@
+Cisco Router Notes
+Most if not all of these commands must be done in configuration mode
+
+Enabling CDP should always be a temporary option for a device or an interface.
+Once you've done your troubleshooting, or allowed your mapping software to map your network, then disable it.
+If there are any unknown bugs in the OS relative to any CVEs known or not, 
+CDP could allow an attacker to get a complete map of your network.
+Don't forget that unlike firewalls, routers and Layer 3 switches use wild card masks for routing protocols, instead of subnet masks.
+Don't mess with EIGRP routing anymore. Use industry standard protocols.
+
+Don't forget to type:  copy run start    when you complete your changes.
+
+1) Some Standard global options, example only, google commands for details based on your environment or OS version
+
+no ip bootp server
+no ip domain lookup
+ip domain name <type domain name here>
+subscriber templating
+ivr prompt buffers <#>
+ip forward-protocol nd
+control-plane
+
+
+2) for logging access to router for security, plus you need this kind of stuff for security audits
+
+login on-failure log
+login on-success log
+
+archive
+	log config
+		logging enable
+			logging size <###>
+			notify syslog contenttype plaintext
+			hidekeys
+
+--
+You'll also need to setup where to send logging
+
+logging facility local2 (or whatever preference your environment requires)
+logging host <ip address of monitoring server, splunk server, etc>
+			
+
+3) Spanning tree options
+
+spanning-tree extend system-id
+
+4) setup local full admin accounts in case RADIUS or AD authentication is broken
+
+username <type username> privilege 15 secret 5 <type secret in clear text, it will show encrypted on show run>
+
+5)  setup an inside interface
+Some of these settings for this inside interface are also representative of a failover.
+Google options in case something has changed for your specific code version
+
+
+interface GigabitEthernet 0/0/3
+	description <type something meaningful, like the destinantion hostname/port>
+	ip address <public IP> <subnet mask> 
+	ip access-group block in    (referencing an inbound list, range, subnet of IPs to drop based on your security team's requirements)
+	ip access-group block out   (referencing an outbound list, range, subnet of IPs to drop based on your security team's requirements)
+	standby use-bia
+	standby 1 ip <primary public IP gateway>
+	standby 1 priority ###  (google list of priorities for your particular requirements)
+	standby 1 preempt
+	standby 1 track ## decrement # (google command for options and how they apply to your particular network, if you even need this)
+
+
+here is an example of the access-group (access-list), but of course, at the end of the list, 
+add a permit ip any any to allow traffic beyond the denies to pass freely:
+
+
+ip access-list extended block
+	deny ip host <specify an IP host on the open internet to drop> any
+	deny <tcp/udp> any host <specify an IP address in your public block or in your private LAN> any
+	
+
+6) Setup and outside interface (or enterprise edge interface in some cases for 1 or more circuits. Below is just an example. Google command options to compare to your needs.)
+This is typically that last point in your LAN before the ISPs next hop to the internet. Example below only. 
+Google options in case something has changed for your specific code version
+This is just a simple setup, there are more options for carrier facing interfaces.
+
+interface GigabitEthernet 0/0/2
+	description <type somthing useful, like the carrier and the circuit ID>
+	bandiwidth ######## (for hard coding based on the bandwidth of your circuit i.e. 1000000 = 1 Gb circuit)
+	ip address <next hop IP, ISP gateway IP> <subnet mask>
+
+7) VRFs are becoming more commonly used in Routers and Layer 3 Switches. Here is an use case example for a management network.
+
+interface GigabitEthernet 0/0/1
+	vrf forwarding Mgmt-intf
+	ip address <management network> <subnet>
+	negotiation auto (full or half is also an option. If you hard code this interface, then you will have to do it on the other end as well)
+	no mop enabled  (unless you are running OLD equipment, you don't need mop enabled. It's possible this option will deprecated in future OS releases)
+
+--You'll also need a default route for your VRF as well.
+
+ip route vrg Mgmt-intf 0.0.0.0 0.0.0.0 
+
+8) BGP settings will also be necessary if your router is on the edge of your LAN before the ISP's next hop Gateway IP.
+This particular example is for a failover and takes in consideration the metrics involved
+
+router BGP ###
+	bgp always-compare-med
+	bgp log-neighbor-changes
+	neighbor <public IP ISP next hop> remote-as # (where # = what ever the ISP's Autonomous System number is. This is unique to every provider.)
+	neighbor <public IP ISP next hop> version # (# = google the version numbers in case something has changed for your particular code version)
+	
+9) If you control a block of IPs, you'll need to setup routes to send block to their required places, 
+such as internal webservers/appliaction/SMTP/DNS/etc servers that are accessed externally without a VPN.
+
+Let's start with a default route example:
+ip route 0.0.0.0 0.0.0.0 <next hop public IP provided by ISP>
+
+Now for some pseudocode on other routes for public IPs. ip route statements use subnet masks, not wild card bits.
+ip route <network public IP> <subnet mask> <destination public IP>
+ip route <single public IP> <destination public IP> 
+
+10) If your interfaces require route-maps, you will need to specify the access list, and then specify an access list for that reference.
+
+route-map ISP-in permit 15
+
+---and then the accompanying access-list pseudocode examples
+
+access-list 15 permit <public network IP> <subnet mask in WILD CARD BITS>
+access-list 15 permit <public IP host>
+	match as-path 15
+
+--You'll also need as-path access-lists
+ip as-path access-list 15 permit ^####_[0-9]*$  (Research what numbers you need for ####, and check the lexers [0-9]*$ online that you need for your specific purposes)
+ip as-path access-list 15 permit ^####_[0-9]*$_[0-9]*$
+
+11) vty inputs (facilitates access types for admin control, and where it comes in on)
+Google stopbits, and access-class vrf's for your particular code version
+You could specify a different number of available channels for logging such as 0 4 for RO users, and maybe 5 15 for full priv 15 admins.
+
+line con 0
+ stopbits 1
+line vty 0 4
+ access-class ssh_access in vrf-also (this specifies vty admin access via the management vrf example earlier in the notes)
+ exec-timeout 30 0
+ transport input ssh (don't EVER use telnet)
+line vty 5 15
+ access-class ssh_access in vrf-also (this specifies vty admin access via the management vrf example earlier in the notes)
+
+12) NTP -- You typically need to have a single NTP server in your Enterprise that EVERY device pulls NTP from, 
+then have that NTP server pull from a time keeper NTP service
+this example uses an access-group (access-list) for determining which of the public IPs/subnets you control are involved
+
+ntp access-group peer 10
+ntp server <ip address of Navy time keeper>
+ntp server <ip address of some NSF atomic clock time keeper>
+
+--Now you need the access-group (access-list). Pseudocode examples below.
+
+access-list 10 permit <public IP>
+access-list 10 permit <public Netork IP address> <subnet mask in WILD CARD BITS>
+
+13) HSRP vs VRRP. Research these options online for your particular code version and what your environment requires.
+options/limitations can differ between Layer 3 Switches and Routers
+
+14) OSPF and RIP.  Research these options online for your particular code version and what your environment requires.
+options/limitations can differ between Layer 3 Switches and Routers
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
