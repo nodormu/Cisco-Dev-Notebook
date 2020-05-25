@@ -207,9 +207,19 @@ NXOSrtr(config)# log-adjacency-changes
 NXOSrtr(config)# network <network address> <wild card bits> area 9   // or whatever area number
 
 
-Verify ospf traffic
--------------------
+Verify ospf mpls traffic
+------------------------
 NXOSrtr(config)# show ip ospf neighbors
+NXOSrtr(config)# show mpls forwarding-table
+NXOSrtr(config)# show ip route <ip address>
+NXOSrtr(config)# show mpls forwarding-table 10.10.10.4 32 detail    // example since the 32 is used instead of 255.255.255.255
+NXOSrtr(config)# show tag-switching tdp bindings 10.10.10.4 32      // and show tag-switching tdp discovery
+NXOSrtr(config)# show mpls ldp bindings
+NXOSrtr(config)# show ip cef detail      // or show ip cef summary
+NXOSrtr(config)# show ip protocols
+NXOSrtr(config)# show mpls interfaces
+
+
 
 
 
