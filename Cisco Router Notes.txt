@@ -100,7 +100,7 @@ ip route vrg Mgmt-intf 0.0.0.0 0.0.0.0
 This particular example is for a failover and takes in consideration the metrics involved
 
 router BGP ###
-	bgp always-compare-med
+	bgp always-compare-med    (You only want to compare MED between connected devices within the same AS)
 	bgp log-neighbor-changes
 	neighbor <public IP ISP next hop> remote-as # (where # = what ever the ISP's Autonomous System number is. This is unique to every provider.)
 	neighbor <public IP ISP next hop> version # (# = google the version numbers in case something has changed for your particular code version)
@@ -161,13 +161,55 @@ options/limitations can differ between Layer 3 Switches and Routers
 14) OSPF and RIP.  Research these options online for your particular code version and what your environment requires.
 options/limitations can differ between Layer 3 Switches and Routers
 
+Here are some step by step examples for an OSPF configuration for NX-OS between 2 NX-OS based routers. DON'T FORGET TO ENABLE MULTICAST AND PIM IF NEEDED. Command set not included for those. Check your code version and refer to Cisco documenation. (i.e. feature pim)
+
+First NX-OS based router
+------------------------
+
+NXOSrtr1(config)# feature ospf
+NXOSrtr1(config)# router ospf 10       // OSPF process ID
+NXOSrtr1(config-router)# router-id 10.1.1.1
+NXOSrtr1-12-1(config-router)# int Eth1/1
+NXOSrtr1(config-if)#ip address 10.1.1.1 255.255.255.252
+NXOSrtr1(config-if)# ip router ospf 100 area 0
+
+Second NX-OS based router
+-------------------------
+
+NXOSrtr2(config)# feature ospf
+NXOSrtr2(config)# router ospf 100         // OSPF process ID
+NXOSrtr2(config-router)# router-id 10.1.1.2
+NXOSrtr2(config)# int Eth1/1
+NXOSrtr2(config-if)#ip address 10.1.1.2 255.255.255.252
+NXOSrtr2(config-if)# ip router ospf 100 area 0
+
+Optional commands for disabling neighbor on a particular interface
+Disabling the neighbor does NOT keep the network from being advertised
+----------------------------------------------------------------------
+
+NXOSrtr(config)# int Eth1/1
+NXOSrtr(config-if)# ip ospf 100 passive-interface
+NXOSrtr(config-if)# ip ospf network point-to-point   // google for more types
 
 
+OSPF MPLS tagging example (config-int isn't the correct output, just a reference that you are in the interface configuration)
+-------------------------------------------
+NXOSrtr(config)# ip cef
+NXOSrtr(config)# interface TenGigabit0/0/2
+NXOSrtr(config-int)# ip address <ip address> <subnet mask, not wild card>
+NXOSrtr(config-int)# tag switching ip
 
 
+For your OSPF process ID settings
+---------------------------------
+NXOSrtr(config)# router ospf 100
+NXOSrtr(config)# log-adjacency-changes
+NXOSrtr(config)# network <network address> <wild card bits> area 9   // or whatever area number
 
 
-
+Verify ospf traffic
+-------------------
+NXOSrtr(config)# show ip ospf neighbors
 
 
 
